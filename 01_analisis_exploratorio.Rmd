@@ -1,0 +1,126 @@
+---
+title: "Análisis exploratorio - Proyecto Final - Diplomado Big Data para Políticas Públcias"
+author: "Grupo Número Tres"
+date: "13 de abril de 2018"
+output:
+  html_document:
+    theme: paper
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+editor_options:
+  chunk_output_type: console
+---
+
+
+#### Setup para programación
+
+```{r setup, include = TRUE}
+# Setup ----
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, comment = NA)
+knitr::opts_knit$set(root.dir = 'D:/Nicolas/Estudios/Diplomado/Modulo 6/Proyecto Final/TDLC-UAI')
+```
+
+```{r}
+# Working directory ----
+setwd('D:/Nicolas/Estudios/Diplomado/Modulo 6/Proyecto Final/TDLC-UAI')
+```
+
+#### Librerías
+
+```{r}
+# Libraries ----
+library(openxlsx)  # Import Excel
+library(pdftools)  # Read PDF
+library(tm)  # Text mining
+```
+
+```{r}
+# Folders and files ----
+# Nota: Deben exisitir las siguienes carpetas.
+# Nota: El archivo .XLSX debe estar en la carpeta 'TDLC-UAI'.
+input_folder_TDLC <- "D:/Nicolas/Estudios/Diplomado/Modulo 6/Proyecto Final/TDLC-UAI"
+input_folder_TDLC_files <- "D:/Nicolas/Estudios/Diplomado/Modulo 6/Proyecto Final/TDLC-UAI/TDLC_Files"
+input_folder_corpus <- "D:/Nicolas/Estudios/Diplomado/Modulo 6/Proyecto Final/TDLC-UAI/Corpus"
+input_file_docs <- "Informes_Resoluciones_Instrucciones_TDLC.xlsx"
+```
+
+
+```{r}
+# Lectura de archivo .XLSX ----
+# Nota: Data frame con direcciones de archivos .PDF.
+input_path <- file.path(input_folder_TDLC, input_file_docs)
+lista_docs <- read.xlsx(input_path, sheet = "Documentos")
+lista_docs$Categoria <- as.factor(lista_docs$Categoria)
+rm(input_path)
+```
+
+```{r}
+# Descarga de archivos .PDF a carpeta local ----
+# Nota: Esta sección se corre una sola vez.
+for (url_doc in lista_docs$Link) {
+  # Posición en data frame ----
+  pos <- which(lista_docs[, 2] == url_doc)
+  # Nombre de archivo .PDF ----
+  doc_pdf <- paste0(lista_docs$Nombre[pos], ".pdf")
+  # Dirección de destino para archivo .PDF ----
+  dest_path <- file.path(input_folder_TDLC_files, doc_pdf)
+  # Descarga de archivo .PDF ----
+  download.file(url_doc, dest_path, mode = "wb")
+  Sys.sleep(2)
+}
+rm(url_doc, pos, doc_pdf, dest_path)
+```
+
+```{r}
+# Guarda archivos .PDF como .TXT ----
+# Nota: Esta sección se corre una sola vez.
+for (doc_name in lista_docs$Nombre) {
+  # Posición en data frame ----
+  pos <- which(lista_docs[, 3] == doc_name)
+  # Nombre de "character vector" ----
+  text_name <- paste0("text_", lista_docs$Nombre[pos])
+  # Nombre de archivo .PDF ----
+  doc_pdf <- paste0(lista_docs$Nombre[pos], ".pdf")
+  # Dirección de origen archivo .PDF ----
+  orig_path <- file.path(input_folder_TDLC_files, doc_pdf)
+  # Lectura de archivo .PDF ----
+  text_pdf <- pdf_text(orig_path)
+  # Nombre de archivo .TXT ----
+  doc_txt <- paste0(lista_docs$Nombre[pos], ".txt")
+  # Dirección de destino archivo .TXT ----
+  dest_path <- file.path(input_folder_TDLC_files, doc_txt)
+  # Guarda archivo .TXT ----
+  write.table(text_pdf, file = dest_path, fileEncoding = "UTF-8")
+  Sys.sleep(2)
+}
+rm(doc_name, pos, text_name, doc_pdf, orig_path, text_pdf, doc_txt, dest_path)
+```
+
+
+```{r}
+# Copia de documentos en carpeta 'Corpus' ----
+
+# Identificación de carpetas ----
+current_folder <- input_folder_TDLC_files
+new_folder <- input_folder_corpus
+
+# Archivos que se van a copiar ----
+# Nota: Se identifican todos los archivos .TXT.
+list_of_files <- list.files(current_folder, ".txt$")
+
+# Se copian todos los archivos en la nueva carpeta ----
+setwd(current_folder)
+file.copy(from = list_of_files, to = new_folder, overwrite = TRUE)
+rm(current_folder, new_folder, list_of_files)
+```
+
+```{r}
+# Corpus ----
+# Nota: Editar esta parte para una mejor lectura y limpieza de Corpus con DataCamp.
+corpus <- Corpus(DirSource(input_folder_corpus, encoding = "UTF-8"))
+```
+
+
+
+
