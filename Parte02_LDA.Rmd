@@ -1,0 +1,254 @@
+---
+title: |
+  | Proyecto Final 
+  | Diplomado Big Data para Políticas Públicas
+  | Universidad Adolfo Ibáñez
+author: |
+  | Priscila Rodriguez
+  | Kiumarz Goharriz
+  | Eduado Jimenez
+  | Nicolás Torrealba
+date: "27 de abril de 2018"
+output: 
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+
+# Parte II. Evaluación de modelos LDA y visualización exploratoria.
+
+## 3. Librerías
+
+Para lograr estimar un modelo LDA y tener un output para visualizar se requieren las siguientes librerías.
+
+```{r}
+library(rJava)
+library(prettydoc)
+library(xlsxjars)
+library(topicmodels)
+library(LDAvis)
+library(RColorBrewer)
+library(wordcloud)
+library(NLP)
+library(tm)
+library(xlsx)
+```
+
+## 4 Evaluación de LDA - Metodos de estimación y n-grama
+
+Se ha escogido el paquete topic models, dado que incluye una interface a dos algoritmos para ajustar un LDA: variational expectation- maximization, desarrollado por David M. Blei et. al. y un algoritmo usando la metodología de sampleo Gibbs, de Xuan-Hieu Phan et. al.
+
+### 4.1 Metodos de estimación para palabras usando VEM
+
+Primero se carga el DTM con monogramas
+```{r}
+CORPUS <- readRDS("/Users/Eduardo/Documents/PROYECTO FINAL/TDLC-UAI/lda_m6_dtm.rds")
+```
+
+Luego se evalua el número de tópicos, estimando el modelo entre 5 y 20 tópicos y utilizando la metodología VEM (Variational expectation-maximization).
+```{r}
+alphas <- vector(mode="numeric", length=16)
+Terms <- rep( list(list()), 16 ) 
+for (i in 1:16){
+K = 4 + i # El número de topicos
+LDA_corpus <- LDA(CORPUS, k = K, method = "VEM") # Modelo LDA con método VEM y n de tópios K
+alphas[i] <- LDA_corpus@alpha # alpha de modelo con K topicos
+Terms[[i]] <- terms(LDA_corpus, 10)
+}
+```
+
+### 4.2 Metodos de estimación para bi-gramas usando VEM
+
+Luego realizamos un proceso similar para ver como es el ajuste con bi-gramas, lo primero es cargar la DTM ajustada a bi-gramas.
+
+```{r}
+CORPUS2 <- readRDS("/Users/Eduardo/Documents/PROYECTO FINAL/TDLC-UAI/lda_b6_dtm.rds")
+```
+
+A continuación, se evalua el número de tópicos con bi-grama, evaluando entre 5 y 20 tópicos y utilizando la metodología VEM (Variational expectation-maximization).
+```{r}
+alphas2 <- vector(mode="numeric", length=16)
+Terms2 <- rep( list(list()), 16 ) 
+for (i in 1:16){
+K = 4 + i # El número de topicos
+LDA_corpus <- LDA(CORPUS2, k = K, method = "VEM") # Modelo LDA con método VEM y n de tópios K
+alphas2[i] <- LDA_corpus@alpha # alpha de modelo con K topicos
+Terms2[[i]] <- terms(LDA_corpus, 10)
+}
+```
+
+A continuación se muestra los alphas, parametro que muestra la dispersión de los pesos de los tópicos sobre los documentos. Si el valor es cercano a 0, la distribución va a estar cargada en un sólo tópico.
+```{r}
+alphas <- cbind(c(1:16),alphas)
+alphas2 <- cbind(c(1:16),alphas2)
+```
+
+```{r}
+par(mfrow=c(1,2)) 
+plot(alphas[,2])
+plot(alphas2[,2])
+```
+
+### 4.3 Metodos de estimación para palabras usando Gibbs
+
+Ahora se evalua el número de tópicos, estimando el modelo entre 5 y 20 tópicos y utilizando la metodología de sampleo de Gibbs en mono-gramas. 
+
+```{r}
+alphas_Gibbs <- vector(mode="numeric", length=16)
+Terms_Gibbs <- rep( list(list()), 16 ) 
+for (i in 1:16){
+K = 4 + i # El número de topicos
+LDA_corpus <- LDA(CORPUS, k = K, method = "Gibbs") # Modelo LDA con método VEM y n de tópios K
+alphas_Gibbs[i] <- LDA_corpus@alpha # alpha de modelo con K topicos
+Terms_Gibbs[[i]] <- terms(LDA_corpus, 10)
+}
+```
+
+### 4.3 Metodos de estimación para bi-gramas usando Gibbs
+
+Ahora se evalua el número de tópicos, estimando el modelo entre 5 y 20 tópicos y utilizando la metodología de sampleo de Gibbs en bi-gramas. 
+```{r}
+alphas2_Gibbs <- vector(mode="numeric", length=16)
+Terms2_Gibbs <- rep( list(list()), 16 ) 
+for (i in 1:16){
+K = 4 + i # El número de topicos
+LDA_corpus <- LDA(CORPUS2, k = K, method = "Gibbs") # Modelo LDA con método VEM y n de tópios K
+alphas2_Gibbs[i] <- LDA_corpus@alpha # alpha de modelo con K topicos
+Terms2_Gibbs[[i]] <- terms(LDA_corpus, 10) 
+}
+```
+
+
+```{r}
+alphas_Gibbs <- cbind(c(1:16),alphas_Gibbs)
+alphas2_Gibbs <- cbind(c(1:16),alphas2_Gibbs)
+```
+
+Se presentan los alphas para los modelos de mono-grama y bi-grama utilizando la metodología de Gibbs.
+```{r}
+par(mfrow=c(1,2)) 
+plot(alphas_Gibbs[,2])
+plot(alphas2_Gibbs[,2])
+```
+
+### 4.4 Almacenar resultados relevantes
+
+Se guardan los resultados de términos relevantes en excel de todas las estimación para aanalizar las diferencias de resultado en los distintos modelos VEM con mono-grama, según número de topicos.
+```{r}
+for (i in 1:16){
+write.xlsx(Terms[[i]], file="/Users/Eduardo/Documents/PROYECTO FINAL/TDLC-UAI/terms.xlsx", sheetName=paste(i), append=T)
+}
+```
+
+Se guardan los resultados de términos relevantes en excel de todas las estimación para aanalizar las diferencias de resultado en los distintos modelos VEM con bi-grama, según número de topicos.
+```{r}
+for (i in 1:16){
+write.xlsx(Terms2[[i]], file="/Users/Eduardo/Documents/PROYECTO FINAL/TDLC-UAI/terms2.xlsx", sheetName=paste(i), append=T)
+}
+```
+
+Se guardan los resultados de términos relevantes en excel de todas las estimación para aanalizar las diferencias de resultado en los distintos modelos Gibbs con mono-grama, según número de topicos.
+```{r}
+for (i in 1:16){
+write.xlsx(Terms_Gibbs[[i]], file="/Users/Eduardo/Documents/PROYECTO FINAL/TDLC-UAI/terms_Gibbs.xlsx", sheetName=paste(i), append=T)
+}
+```
+
+Se guardan los resultados de términos relevantes en excel de todas las estimación para aanalizar las diferencias de resultado en los distintos modelos Gibbs con bi-grama, según número de topicos.
+```{r}
+for (i in 1:16){
+write.xlsx(Terms2_Gibbs[[i]], file="/Users/Eduardo/Documents/PROYECTO FINAL/TDLC-UAI/terms2_Gibbs.xlsx", sheetName=paste(i), append=T)
+}
+```
+
+Como resultado, se escoge modelo de 10 topicos, utilizando metodología Gibbs para mono-gramas.
+
+## 5. Proceso 2 - Visualización modelo seleccionado
+
+Para entregar un resultado que permita ser input para el paquete de visualización en LDAvis (sistema de visualización de modelos LDA), se requieren tres elementos, el Corpus, la matriz de documentos-términos y el objeto LDA del modelo.
+
+### 5.1 Cargar elementos claves para LDA
+
+Por esto, cargamos el corpus.
+```{r}
+CORPUS <- readRDS("/Users/Eduardo/Documents/PROYECTO FINAL/TDLC-UAI/lda_6_corpus.rds")
+```
+
+Luego preparamos la matriz de documentos-términos.
+```{r}
+Corpus_dtm <- DocumentTermMatrix(CORPUS)
+```
+
+### 5.2 Estimación modelo LDA 
+
+Y ajustamos el modelo en base a lo determinado en el proceso anterior, es decir un modelo LDA de 10 tópicos, estimado en base a metodología de sampleo de Gibbs.
+```{r}
+LDA_Corpus <- LDA(Corpus_dtm, k = 10, method = "Gibbs")
+```
+
+### 5.3 Resultados del modelo
+
+Se observan las 15 principales palabras según tópico.
+```{r}
+terms(LDA_Corpus, 15)
+```
+
+Se presenta el alpha del modelo.
+```{r}
+LDA_Corpus@alpha
+```
+
+
+Y se guardan los gamma en una matriz que alimentará el modelo predictivo. Los gammas corresponden a los pesos de cada tópico sobre cada documento. La suma de todos los pesos para un documento resulta en 1.
+```{r}
+GAMMA <- LDA_Corpus@gamma
+write.xlsx(GAMMA, "/Users/Eduardo/Documents/PROYECTO FINAL/TDLC-UAI/monogram-6GAMMA.xlsx")
+```
+
+### 5.4 Preparar input para LDAvis
+
+Se presenta la función que permite transformar elemento LDA a LDAvis (para función serVis, la cual es alimentada por un archivo Json)
+```{r}
+topicmodels2LDAvis <- function(x, ...){
+    post <- topicmodels::posterior(x)
+    if (ncol(post[["topics"]]) < 3) stop("The model must contain > 2 topics")
+    mat <- x@wordassignments
+    LDAvis::createJSON(
+        phi = post[["terms"]], 
+        theta = post[["topics"]],
+        vocab = colnames(post[["terms"]]),
+        doc.length = slam::row_sums(mat, na.rm = TRUE),
+        term.frequency = slam::col_sums(mat, na.rm = TRUE)
+    )
+}
+```
+
+Se aplica función a elemento LDA_Corpus
+```{r}
+LDA_VIS <- topicmodels2LDAvis(LDA_Corpus)
+```
+
+
+Para visualizar el modelo en dashboard, se utiliza función renderVis, del paquete LDAvis, el cual debe ser alimentado por una lista. A continuación se presenta la transformación de LDA_Corpus a una lista que alimentará el Dashboard.
+```{r}
+post <- topicmodels::posterior(LDA_Corpus)
+myLDA_vis <- list( phi = post[["terms"]], 
+        theta = post[["topics"]],
+        vocab = colnames(post[["terms"]]),
+        doc.length = slam::row_sums(LDA_Corpus@wordassignments, na.rm = TRUE),
+        term.frequency = slam::col_sums(LDA_Corpus@wordassignments, na.rm = TRUE))
+```
+
+Se guarda este elemento para ser leido por el dashboard.
+```{r}
+saveRDS(myLDA_vis, "/Users/Eduardo/Documents/PROYECTO FINAL/TDLC-UAI/myLDA_vis.rds")
+```
+
+### 5.4 Visualización LDAvis
+
+Se presenta visualización utilizando serVis().
+```{r}
+serVis(LDA_VIS, out.dir = 'rvis', 
+       open.browser = TRUE)
+```

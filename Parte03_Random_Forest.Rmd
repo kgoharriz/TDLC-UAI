@@ -1,0 +1,153 @@
+---
+title: |
+  | Proyecto Final 
+  | Diplomado Big Data para Políticas Públicas
+  | Universidad Adolfo Ibáñez
+author: |
+  | Priscila Rodriguez
+  | Kiumarz Goharriz
+  | Eduado Jimenez
+  | Nicolás Torrealba
+date: "27 de abril de 2018"
+output: 
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+# Parte III. Random Forest
+
+Para lograr estimar un modelo random forest y tener un output para visualizar se requieren las siguientes librerías.
+
+```{r, message=FALSE}
+library(rJava)
+library(prettydoc)
+library(xlsxjars)
+library(NLP)
+library(xlsx)
+library(grid)
+library(mvtnorm)
+library(modeltools)
+library(stats4)
+library(zoo)
+library(strucchange)
+library(party)
+library(randomForest)
+library(rpart)
+library(RColorBrewer)
+```
+
+## 1. Preparar datos para modelamiento
+
+### 1.1 Importar base de datos y estadísticas generales
+
+Importar base
+```{r}
+Resoluciones <- read.xlsx("/Users/Eduardo/Documents/PROYECTO FINAL/TDLC-UAI/Informes_Resoluciones_Instrucciones_TDLC_complete.xlsx", 1)
+set.seed(123)
+```
+
+Descripciones generales
+```{r}
+str(Resoluciones)
+
+head(Resoluciones)
+
+summary(Resoluciones)
+```
+
+## 2. Modelamiento
+
+### 2.1 Modelos base Random Forest.
+
+```{r}
+modelo_base <- randomForest(conclusion ~ mercado + materia + topico.1 + topico.2 + topico.3 + topico.4 + topico.5 + topico.6 + topico.7 + topico.8 + topico.9 + topico.10, data = Resoluciones, importance = TRUE)
+
+modelo_base
+
+plot(modelo_base)
+```
+
+```{r}
+modelo_uno <- randomForest(conclusion ~  topico.1 + topico.2 + topico.3 + topico.4 + topico.5 + topico.6 + topico.7 + topico.8 + topico.9 + topico.10, data = Resoluciones, importance = TRUE, ntree=700, mtry = 5)
+
+modelo_uno
+```
+
+```{r}
+plot(modelo_uno)
+```
+
+```{r}
+modelo_dos <- randomForest(conclusion ~ mercado + topico.1 + topico.2 + topico.3 + topico.4 + topico.5 + topico.6 + topico.7 + topico.8 + topico.9 + topico.10, data = Resoluciones, importance = TRUE, ntree=700, mtry = 9)
+
+modelo_dos
+```
+
+```{r}
+plot(modelo_dos)
+```
+
+
+```{r}
+modelo_tres <- randomForest(conclusion ~ materia + topico.1 + topico.2 + topico.3 + topico.4 + topico.5 + topico.6 + topico.7 + topico.8 + topico.9 + topico.10, data = Resoluciones, importance = TRUE, ntree=700, mtry = 2)
+
+modelo_tres
+```
+
+```{r}
+plot(modelo_tres)
+```
+
+### 2.2 Gráficar modelo de Random Forest
+
+El modelo dos es el que muestra el mejor resultado, con un 36,36% de ratio de error.
+
+Generamos un modelo con las mismas caracteristicas usando cforest, para luego poder gráficarlo.
+
+```{r}
+tree <- cforest(conclusion ~ mercado + topico.1 + topico.2 + topico.3 + topico.4 + topico.5 + topico.6 + topico.7 + topico.8 + topico.9 + topico.10, data=Resoluciones, controls=cforest_unbiased(mtry=9, ntree = 700))
+```
+
+```{r, echo= FALSE}
+get_cTree <- function(cf, k=1) {
+  dt <- cf@data@get("input")
+  tr <- party:::prettytree(cf@ensemble[[k]], names(dt))
+  tr_updated <- update_tree(tr, dt)
+  new("BinaryTree", tree=tr_updated, data=cf@data, responses=cf@responses, 
+      cond_distr_response=cf@cond_distr_response, predict_response=cf@predict_response)
+}
+
+update_tree <- function(x, dt) {
+  x <- update_weights(x, dt)
+  if(!x$terminal) {
+    x$left <- update_tree(x$left, dt)
+    x$right <- update_tree(x$right, dt)   
+  } 
+  x
+}
+
+update_weights <- function(x, dt) {
+  splt <- x$psplit
+  spltClass <- attr(splt,"class")
+  spltVarName <- splt$variableName
+  spltVar <- dt[,spltVarName]
+  spltVarLev <- levels(spltVar)
+  if (!is.null(spltClass)) {
+    if (spltClass=="nominalSplit") {
+     attr(x$psplit$splitpoint,"levels") <- spltVarLev   
+     filt <- spltVar %in% spltVarLev[as.logical(x$psplit$splitpoint)] 
+    } else {
+     filt <- (spltVar <= splt$splitpoint)
+    }
+  x$left$weights <- as.numeric(filt)
+  x$right$weights <- as.numeric(!filt)
+  }
+  x
+}
+```
+
+```{r}
+plot(get_cTree(tree, 1), cex = 0.7)
+```
+
