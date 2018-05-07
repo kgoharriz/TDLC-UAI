@@ -1,0 +1,444 @@
+---
+title: |
+  | Proyecto Final 
+  | Diplomado Big Data para Políticas Públicas
+  | Universidad Adolfo Ibáñez
+author: |
+  | Priscila Rodriguez
+  | Kiumarz Goharriz
+  | Eduado Jimenez
+  | Nicolás Torrealba
+date: "27 de abril de 2018"
+output: 
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+```{r setup, include = FALSE}
+# Working directory (Nicolás Torrealba) ----
+work_dir <- "D:/Nicolas/Estudios/Diplomado/Modulo 6/Proyecto Final/TDLC-UAI"
+setwd(work_dir)
+
+# Setup ----
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_knit$set(root.dir = work_dir)
+```
+
+# Parte II. Edición de documentos para Minería de texto
+
+El objetivo de esta programación es obtener y procesar documentos legales, para posteriormente hacer análisis de minería de texto.
+
+La programación tiene dos secciones. En la primera se descargan los archivos desde direcciones 'url' y se leen en R para su procesamiento. En la segunda sección se realiza edición, limpieza y almacenamiento de la información, para su posterior uso en procesos de **minería de texto** y **visualización** de la información.
+
+```{r folders, echo = FALSE}
+# Folders and files ----
+# Nota: Deben exisitir las siguienes carpetas.
+# Nota: El archivo .XLSX debe estar en la carpeta 'TDLC-UAI'.
+input_folder_TDLC <- work_dir
+input_folder_TDLC_files <- paste0(work_dir, "/TDLC_Files")
+input_folder_corpus <- paste0(work_dir, "/Corpus")
+input_file_docs <- "Informes_Resoluciones_Instrucciones_TDLC_prs.xlsx"
+```
+
+La programación considera las siguientes librerías de R:
+
+```{r libraries, results = 'hide'}
+# Libraries ----
+library(openxlsx)  # Import Excel
+library(pdftools)  # Read PDF
+library(stringr)  # Strings
+library(tm)  # Text mining
+library(SnowballC)  # for Stemming
+library(RWeka)  # Machine learning
+```
+
+## 1. Carga de documentos en R
+
+En esta sección, se crea un **Data Frame** con la información del archivo Excel, con una variable que contiene las direcciones 'url' de cada documento considerado, otra variable con el nombre de cada documento y otras variables que caracterizan los documentos.
+
+Se utiliza la información de las direcciones 'url' y los nombres de los documentos para descargar archivos .PDF de cada documento. Luego se leen éstos archivos como **character vector** dentro de R.
+
+### 1.1. Carga de Data Frame con 'url' y matriz de variables
+
+Primero se crea el 'data frame' desde el archivo Excel. Se guarda información para **66 documentos**.
+
+```{r dataframe_1}
+# Lectura de archivo .XLSX ----
+# Nota: Data frame con direcciones de archivos .PDF.
+input_path <- file.path(input_folder_TDLC, input_file_docs)
+lista_docs <- read.xlsx(input_path, sheet = "Documentos")
+lista_docs <- lista_docs[c("link", "nombre")]
+rm(input_path)
+```
+
+### 1.2. Descarga de archivos .PDF
+
+Luego se descargan los archvos en formato .PDF.
+
+```{r down_pdf, eval = FALSE}
+# Descarga de archivos .PDF a carpeta local ----
+# Nota: Esta sección se corre una sola vez.
+for (url_doc in lista_docs$link) {
+  # Posición en data frame ----
+  pos <- which(lista_docs[, 1] == url_doc)
+  # Nombre de archivo .PDF ----
+  doc_pdf <- paste0(lista_docs$nombre[pos], ".pdf")
+  # Dirección de destino para archivo .PDF ----
+  dest_path <- file.path(input_folder_TDLC_files, doc_pdf)
+  # Descarga de archivo .PDF ----
+  download.file(url_doc, dest_path, mode = "wb")
+  Sys.sleep(2)
+}
+rm(url_doc, pos, doc_pdf, dest_path)
+```
+
+#### 1.3. Lectura de archivos PDF como 'character vector'
+
+Por último, se leen los archivos .PDF como 'character vector' en R.
+
+```{r load_pdf}
+# Letura de archivos .PDF ----
+for (doc_name in lista_docs$nombre) {
+  # Posición en data frame ----
+  pos <- which(lista_docs[, 2] == doc_name)
+  # Nombre de "character vector" ----
+  text_name <- paste0("text_", lista_docs$nombre[pos])
+  # Archivo .PDF ----
+  doc_pdf <- paste0(lista_docs$nombre[pos], ".pdf")
+  # Dirección de origen archivo .PDF ----
+  orig_path <- file.path(input_folder_TDLC_files, doc_pdf)
+  # Lectura de archivo .PDF ----
+  text_pdf <- pdf_text(orig_path)
+  assign(text_name, text_pdf)
+}
+rm(doc_name, pos, text_name, doc_pdf, orig_path, text_pdf)
+```
+
+## 2. Edición y limpieza de textos
+
+En esta sección se editan los textos de los documentos para que puedan ser utilizandos en minería de texto. Para esto se crea un nuevo **Data Frame** que será utilizado como fuente para armar **Corpus** para el análisis.
+
+La edición y limpieza de los textos se hace sobre los 'character vector' individuales, y luego el resultado se va almacendando en el 'data frame'.
+
+Por último se guardan resultados en **archivos .rds**, para su uso posterior en minería de texto y visualización.
+
+### 2.1. Edición de textos parte (1): 'Cleaning'
+
+Primero se crea un 'data frame' con un identificador para cada documento y una columna donde se almacenarán los textos editados. La edición inicial consiste en convertir el 'character vector' que originalmente se lee como una lista, en un solo 'string' con el texto compilado.
+
+Luego se aplican las siguientes técnicas de limpieza de textos:
+  1. Se eliminan puntaciones
+  2. Se eliminan números
+  3. Se deja el texto en letras minúsculas
+  4. Se eliminan 'stopwords' (palabras irrelevantes)
+  5. Se reducen los espacios en blanco
+  6. Se eliminan los acentos
+
+```{r cleaning_1, results = 'hide'}
+# Data Frame para Corpus ----
+wcloud_df <- data.frame(doc_id = lista_docs$nombre,
+                        text = character(length(lista_docs$nombre)))
+wcloud_df$text <- as.character(wcloud_df$text)
+
+# Edición de textos ----
+for (i_text in lista_docs$nombre) {
+  
+  # Número de iteración ----
+  pos <- which(lista_docs$nombre == i_text)
+  print(paste0("Iteración número ", pos))
+  
+  # Individualiza documento ----
+  n_text <- paste0("text_", i_text)
+  text_10 <- get(n_text)
+  
+  # Separa documento en líneas (elimina separador) ----
+  text_11 <- strsplit(text_10, "\r\n")
+  
+  # Agrupación de texto principal ----
+  # Nota: se excluyen las dos primeras líneas por ser encabezados.
+  text_12 <- c()
+  for (i in 1:length(text_11)) {
+    text_12 <- c(text_12, text_11[[i]][3:length(text_11[[i]])])
+  }
+  text_13 <- paste0(text_12, collapse = " ")
+  
+  # removePunctuation ----
+  text_20 <- str_replace_all(string = text_13,
+                             pattern = "[[:punct:]]|º|°|\\$|´",
+                             replacement = "")
+  
+  # removeNumbers ----
+  text_21 <- str_replace_all(string = text_20,
+                            pattern = "[[:digit:]]",
+                            replacement = "")
+  
+  # tolower ----
+  text_22 <- str_to_lower(text_21)
+  
+  # removeWords - stopwords ----
+  mystopwords <- c("x", "n", "si", "bien", "dl", "sa")
+  text_23 <- removeWords(x = text_22,
+                         words = c(stopwords("es"), mystopwords))
+  
+  # stripWhitespace ----
+  text_24 <- str_replace_all(string = text_23,
+                            pattern = "\\s+",
+                            replacement = " ")
+  text_24 <- trimws(x = text_24, which = "both")
+  
+  # Limpieza de acentos en texto ----
+  no_accent <- list('á'='a', 'é'='e', 'í'='i', 'ó'='o', 'ú'='u', 'ü'='u')
+  text_30 <- chartr(old = paste(names(no_accent), collapse = ''),
+                    new = paste(no_accent, collapse = ''),
+                    x = text_24)
+  
+  # Guarda documento en Data Frame para Corpus ----
+  wcloud_df$text[wcloud_df$doc_id == i_text] <- text_30
+
+}
+
+# Elimina elementos temporales ----
+rm(i, i_text, pos, n_text, no_accent, text_10, text_11, text_12,
+   text_13, text_20, text_21, text_22, text_23, text_24, text_30)
+```
+
+### 2.2. Edición de textos parte (2): 'Stopwords and Stemming'
+
+Luego se crea un 'corpus' con los documentos editados hasta este punto, para construir finalmente una 'matriz' de 'documentos-términos', Con esta matriz se identifican dos nuevos grupos de **'stopwords'**, que luego son aplicados junto con un criterio de **'truncamiento'**, para terminar con la limpieza de los documentos.
+
+Primero se construye desde el 'corpus' hasta la 'matriz'.
+
+```{r matrix_1}
+# Data Frame Source ----
+# Nota: Debe tener las columnas 'doc_id' y 'text'.
+df_source <- DataframeSource(wcloud_df)
+
+# WordCloud Corpus ----
+wcloud_corpus <- VCorpus(df_source)
+
+# Create DTM from the corpus ----
+wcloud_dtm <- DocumentTermMatrix(wcloud_corpus)
+wcloud_dtm
+
+# Convert DTM to a matrix ----
+wcloud_m <- as.matrix(wcloud_dtm)
+```
+
+En este proceso se construye una 'Document-Term Matrix'. Ésta muestra que el grupo de 66 documentos -hasta este punto- contiene 20.732 términos, con un nivel de 'sparsity' de 91%.
+
+A partir de la 'matriz' se identifican las palabras más frecuentes a lo largo de todos los documentos (*'sparsity'*), y se aplica un criterio cualitativo para generar una lista de 'stopwords' a partir de esta información.
+
+```{r sparsity}
+# Words sparsity ----
+wcloud_spars <- sort(colSums(wcloud_m > 0), decreasing = TRUE)
+wcloud_spars <- (wcloud_spars / nrow(wcloud_m)) * 100
+
+# Lista de palabras según 'sparsity' ----
+#names(wcloud_spars[wcloud_spars > 80])
+
+# Vector de 'stopwords' ----
+stopwords_spars <- names(wcloud_spars[wcloud_spars > 95])
+keep_spars <- c("empresas", "autos", "informacion", "servicio",
+                "efectos", "oportunidad", "efecto")
+stopwords_spars <- setdiff(x = stopwords_spars,
+                           y = keep_spars)
+rm(keep_spars)
+
+# Número de palabras en 'stopwords_spars' ----
+length(stopwords_spars)
+```
+
+Se opta por utilizar un criterio de excluir palabras que aparecen en al menos un 95% por de los documentos considerados. Luego de excluir de este grupo aquellas palabras que se consideran 'relevantes', se obtiene una lista de 'stopwords' de 41 palabras.
+
+Después, se vuelve a utilizar la 'matriz' para identificar las palabras más frecuentes en el 'corpus' como un todo (*'frequency'*), y se vuelve a aplicar un criterio cualitativo para generar una lista de 'stopwrods'.
+
+```{r frequency}
+# Words frequency ----
+wcloud_freqs <- sort(colSums(wcloud_m), decreasing = TRUE)
+
+# Lista de palabras según 'frequency' ----
+#names(wcloud_freqs[1:100])
+
+# Vector de 'stopwords' ----
+stopwords_freqs <- names(wcloud_freqs[1:50])
+keep_freqs <- c("servicios", "operacion", "empresas", "informacion",
+                "empresa", "servicio", "carga", "precios",
+                "atraque", "costos", "concesion", "puerto",
+                "frente", "entrada")
+stopwords_freqs <- setdiff(x = stopwords_freqs,
+                           y = keep_freqs)
+rm(keep_freqs)
+
+# Número de palabras en 'stopwords_freqs' ----
+length(stopwords_freqs)
+```
+
+Al analizar las palabras más frecuentes en el 'corpus' se observa que existe una mayor cantidad de palabras 'relevantes' que se deberían mantener. Por esta razón, se opta por utilizar como criterio exlcuir las primeras 50 palabras más frecuentes, excluyendo de este grupo las palabras considerads 'relevantes'. De esto se obtiene una lista de 'stopwords' de 36 palabras.
+
+Finalmente se aplican las siguientes técnicas de limpieza de textos:
+  1. Se eliminan 'stopwords' definidas por 'sparsity'
+  2. Se eliminan 'stopwords' definidas por 'frequency'
+  3. Se truncan las palabras hasta 5 caracteres
+  4. Se truncan las palabras hasta 6 caracteres
+
+Los dos últimos criterios se aplican y se guardan por separado para el análisis posterior. Los resultados se almacenan en formato 'data frame'.
+
+```{r cleaning_2, results = 'hide'}
+# Nota: Continua edición desde Data Frame de la parte 1.
+
+# Data Frame para Corpus ----
+lda_df <- data.frame(doc_id = wcloud_df$doc_id,
+                     text = character(length(wcloud_df$doc_id)))
+lda_df$text <- as.character(lda_df$text)
+# Nota: Se crean dos 'data frame' para distinto truncamiento.
+lda_5_df <- lda_df
+lda_6_df <- lda_df
+
+# Edición de textos ----
+for (i_text in lda_df$doc_id) {
+  
+  # Número de iteración ----
+  pos <- which(lda_df$doc_id == i_text)
+  print(paste0("Iteración número ", pos))
+  
+  # Individualiza documento ----
+  text_40 <- wcloud_df$text[wcloud_df$doc_id == i_text]
+  
+  # removeWords - stopwords_spars ----
+  text_41 <- removeWords(x = text_40,
+                         words = stopwords_spars)
+  
+  # removeWords - stopwords_freqs ----
+  text_42 <- removeWords(x = text_41,
+                         words = stopwords_freqs)
+  
+  # Trunca palabras hasta 5 caracteres ----
+  text_431 <- sapply(text_42, function(str) {
+    str <- unlist(strsplit(str, " "))
+    str <- strtrim(str, 5)
+    str <- subset(str, nchar(str) >= 2)
+    str <- paste(str, collapse = " ")
+    str
+  })
+  text_431 <- unname(text_431)
+  
+  # Trunca palabras hasta 6 caracteres ----
+  text_432 <- sapply(text_42, function(str) {
+    str <- unlist(strsplit(str, " "))
+    str <- subset(str, nchar(str) >= 2)
+    str <- strtrim(str, 6)
+    str <- paste(str, collapse = " ")
+    str
+  })
+  text_432 <- unname(text_432)
+  
+  # Guarda documento en Data Frame para Corpus ----
+  lda_5_df$text[lda_df$doc_id == i_text] <- text_431
+  lda_6_df$text[lda_df$doc_id == i_text] <- text_432
+
+}
+
+# Elimina elementos temporales ----
+rm(i_text, pos, text_40, text_41, text_42, text_431, text_432)
+```
+
+### 2.3. 'Document-Term Matrix' para LDA
+
+Con los 'data frame' de los textos editados se construyen 'Document-Term Matrix' (DTM), que posteriormente son utilizadas para hacer minería de texto.
+
+Se construyen 4 DTM, dos para cada 'nivel de truncamiento' considerado. Un grupo de DTM donde los términos se consideran individualmente, y otro grupo de DTM donde se construyen *bi-gramas*, esto es, pares de palabras agrupadas.
+
+```{r lda_df_5}
+# 'Document-Term Matrix' para truncamiento de 5 caracteres
+# Nota: Se crean matrices con mono-gramas y bi-gramas.
+
+# Data Frame Source ----
+# Nota: Debe tener las columnas 'doc_id' y 'text'.
+lda_df <- lda_5_df
+df_source <- DataframeSource(lda_df)
+
+# LDA Corpus -----
+lda_corpus <- VCorpus(df_source)
+
+# Create DTM from the corpus ----
+lda_m5_dtm <- DocumentTermMatrix(lda_corpus)
+
+# Make tokenizer function ----
+tokenizer <- function(x) 
+  NGramTokenizer(x, Weka_control(min = 2, max = 2))
+
+# Create bigram_dtm ----
+lda_b5_dtm <- DocumentTermMatrix(
+  lda_corpus, 
+  control = list(tokenize = tokenizer)
+)
+```
+
+```{r lda_df_6}
+# 'Document-Term Matrix' para truncamiento de 6 caracteres
+# Nota: Se crean matrices con mono-gramas y bi-gramas.
+
+# Data Frame Source ----
+# Nota: Debe tener las columnas 'doc_id' y 'text'.
+lda_df <- lda_6_df
+df_source <- DataframeSource(lda_df)
+
+# LDA Corpus -----
+lda_corpus <- VCorpus(df_source)
+# Guarda una copia para LDAvis ----
+lda_6_corpus <- lda_corpus
+
+# Create DTM from the corpus ----
+lda_m6_dtm <- DocumentTermMatrix(lda_corpus)
+lda_m6_dtm
+
+# Make tokenizer function ----
+tokenizer <- function(x) 
+  NGramTokenizer(x, Weka_control(min = 2, max = 2))
+
+# Create bigram_dtm ----
+lda_b6_dtm <- DocumentTermMatrix(
+  lda_corpus, 
+  control = list(tokenize = tokenizer)
+)
+```
+
+Si analizamos la última 'Document-Term Matrix', luego de todo el proceso de edición y limpieza de los textos, vemos que ésta ahora contiene 8.982 términos, con un nivel de 'sparsity' de 88%.
+
+### 2.4. Almacenamiento en archivos .RDS
+
+Esta programación termina con el almacenamiento de la información procesada en *archivos .RDS*, para su posterior uso en análisis de minería de texto y visualización.
+
+Se almacena un archivo .RDS para hacer visualización con *'wordcloud'*. En este caso se guarda un 'data frame' con los textos editados, ya que se espera hacer agrupamientos de la información en términos de 'n-gramas' y 'ponderación' de los términos en el DTM.
+
+```{r wcloud_rds, eval = FALSE}
+# Guarda archivo RDS para hacer 'wordcloud' ----
+
+# Data Frame de textos con limpieza 1 ----
+saveRDS(object = wcloud_df, file = "wcloud_df.rds")
+
+# Data Frame de textos con limpieza final ----
+saveRDS(object = lda_6_df, file = "lda_6_df.rds")
+```
+
+Se almacenan archvos .RDS para hacer minería de texto con *'Latent Dirichlet allocation (LDA)'*. En este caso se guarda un 'corpus' y las distintas versiones de 'DTM' generadas para este fin.
+
+```{r lda_rds, eval = FALSE}
+# Guarda archivos RDS para análisis LDA ----
+
+# Corpus con truncamiento de 6 caracteres ----
+saveRDS(object = lda_6_corpus, file = "lda_6_corpus.rds")
+
+# DTM con mono-gramas y truncamiento de 5 caracteres ----
+saveRDS(object = lda_m5_dtm, file = "lda_m5_dtm.rds")
+
+# DTM con bi-gramas y truncamiento de 5 caracteres ----
+saveRDS(object = lda_b5_dtm, file = "lda_b5_dtm.rds")
+
+# DTM con mono-gramas y truncamiento de 6 caracteres ----
+saveRDS(object = lda_m6_dtm, file = "lda_m6_dtm.rds")
+
+# DTM con bi-gramas y truncamiento de 6 caracteres ----
+saveRDS(object = lda_b6_dtm, file = "lda_b6_dtm.rds")
+```
